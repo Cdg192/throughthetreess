@@ -157,12 +157,12 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
 
-        // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        // Lighting - bright lights to ensure visibility
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
         scene.add(ambientLight);
         
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(10, 20, 10);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        directionalLight.position.set(15, 25, 15);
         directionalLight.castShadow = true;
         directionalLight.shadow.mapSize.width = 2048;
         directionalLight.shadow.mapSize.height = 2048;
@@ -171,6 +171,10 @@
         directionalLight.shadow.camera.top = 30;
         directionalLight.shadow.camera.bottom = -30;
         scene.add(directionalLight);
+        
+        const pointLight = new THREE.PointLight(0xffffff, 0.8);
+        pointLight.position.set(0, 10, 0);
+        scene.add(pointLight);
 
         // Game state
         const game = {
@@ -191,10 +195,11 @@
         function createGround(size = 30) {
             const ground = new THREE.Mesh(
                 new THREE.PlaneGeometry(size, size),
-                new THREE.MeshStandardMaterial({ color: 0x2d5a3d })
+                new THREE.MeshStandardMaterial({ color: 0x4a7c59, roughness: 0.8 })
             );
             ground.receiveShadow = true;
-            ground.position.y = -0.5;
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -1;
             scene.add(ground);
         }
 
@@ -205,7 +210,7 @@
             // Body
             const body = new THREE.Mesh(
                 new THREE.BoxGeometry(0.6, 1.2, 0.4),
-                new THREE.MeshStandardMaterial({ color: 0x8B4513 })
+                new THREE.MeshStandardMaterial({ color: 0xCD853F, roughness: 0.7 })
             );
             body.position.y = 0.6;
             body.castShadow = true;
@@ -213,8 +218,8 @@
 
             // Head
             const head = new THREE.Mesh(
-                new THREE.SphereGeometry(0.3, 8, 8),
-                new THREE.MeshStandardMaterial({ color: 0xFFD7A8 })
+                new THREE.SphereGeometry(0.3, 16, 16),
+                new THREE.MeshStandardMaterial({ color: 0xFFD7A8, roughness: 0.6 })
             );
             head.position.y = 1.4;
             head.castShadow = true;
@@ -223,9 +228,9 @@
             // Guitar (simplified)
             const guitar = new THREE.Mesh(
                 new THREE.BoxGeometry(0.2, 1.2, 0.1),
-                new THREE.MeshStandardMaterial({ color: 0xA0522D })
+                new THREE.MeshStandardMaterial({ color: 0xD2691E, roughness: 0.5 })
             );
-            guitar.position.set(0.6, 0.5, 0);
+            guitar.position.set(0.5, 0.5, 0);
             guitar.rotation.z = 0.3;
             guitar.castShadow = true;
             group.add(guitar);
@@ -241,15 +246,15 @@
             
             const body = new THREE.Mesh(
                 new THREE.BoxGeometry(0.6, 1.2, 0.4),
-                new THREE.MeshStandardMaterial({ color: type === 'cultist' ? 0x541a1a : 0x4a0e0e })
+                new THREE.MeshStandardMaterial({ color: type === 'cultist' ? 0x8B1a1a : 0xCC0000, roughness: 0.7 })
             );
             body.position.y = 0.6;
             body.castShadow = true;
             group.add(body);
 
             const head = new THREE.Mesh(
-                new THREE.SphereGeometry(0.3, 8, 8),
-                new THREE.MeshStandardMaterial({ color: 0x8B0000 })
+                new THREE.SphereGeometry(0.3, 16, 16),
+                new THREE.MeshStandardMaterial({ color: type === 'cultist' ? 0xFF4444 : 0xFF0000, roughness: 0.6 })
             );
             head.position.y = 1.4;
             head.castShadow = true;
