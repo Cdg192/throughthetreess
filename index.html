@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASTHENIA - RPG Adventure</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: #e0e0e0;
+            font-family: 'Arial', sans-serif;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        #container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: rgba(22, 33, 62, 0.9);
+            border: 2px solid #0f3460;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(15, 52, 96, 0.5);
+        }
+        h1 {
+            text-align: center;
+            color: #e94560;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px #e94560;
+            font-size: 2.5em;
+        }
+        .subtitle {
+            text-align: center;
+            color: #0f3460;
+            margin-bottom: 20px;
+            font-style: italic;
+        }
+        #stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+        .stat {
+            border: 1px solid #0f3460;
+            padding: 10px;
+            text-align: center;
+            background: rgba(15, 52, 96, 0.3);
+            border-radius: 4px;
+        }
+        .stat-label { color: #0a94da; font-weight: bold; }
+        .stat-value { color: #e94560; font-size: 14px; }
+        #output {
+            height: 400px;
+            overflow-y: auto;
+            background: #0a0a0a;
+            border: 1px solid #0f3460;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 13px;
+        }
+        #output::-webkit-scrollbar { width: 8px; }
+        #output::-webkit-scrollbar-track { background: #1a1a2e; }
+        #output::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 4px; }
+        .text-normal { color: #e0e0e0; }
+        .text-location { color: #0a94da; font-weight: bold; }
+        .text-npc { color: #00d4aa; }
+        .text-enemy { color: #e94560; font-weight: bold; }
+        .text-success { color: #00d680; }
+        .text-warning { color: #ffa500; }
+        .text-error { color: #ff4444; }
+        .text-story { color: #c0a0ff; font-style: italic; }
+        #input-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        #command {
+            flex: 1;
+            padding: 10px;
+            background: #0a0a0a;
+            border: 1px solid #0f3460;
+            color: #0a94da;
+            font-family: 'Arial', monospace;
+            font-size: 14px;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #0f3460;
+            color: #0a94da;
+            border: 1px solid #0a94da;
+            font-family: 'Arial', monospace;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #0a94da;
+            color: #0f3460;
+        }
+        .buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .buttons button {
+            padding: 5px 10px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>⚔️ ASTHENIA ⚔️</h1>
+        <div class="subtitle">Rescue the Cat - A Tale of Heroism and Vision Issues</div>
+        <div id="stats"></div>
+        <div id="output"></div>
+        <div class="buttons" id="buttons"></div>
+        <div id="input-area">
+            <input type="text" id="command" placeholder="Enter command...">
+            <button onclick="handleInput()">Execute</button>
+        </div>
+    </div>
+
+    <script>
+        const game = {
+            // Character stats
+            character: 'Caleb',
+            hp: 100,
+            maxHp: 100,
+            attack: 8,
+            defense: 5,
+            gold: 0,
+            xp: 0,
+            level: 1,
+            inventory: [],
+            party: ['Chazz'],
+            
+            // Game state
+            location: 'cottage',
+            inCombat: false,
+            currentEnemy: null,
+            gameOver: false,
+            victory: false,
+            rescuedCat: false,
+            traceyDefeated: false,
+            
+            // Locations
+            locations: {
+                cottage: {
+                    name: 'Caleb\'s Cottage',
+                    desc: 'Your humble home. A cozy cottage where you and your beloved cat Ptouneigh have lived peacefully... until she was taken.\nChazz stands ready by the door, fidgeting nervously.',
+                    exits: { north: 'village', east: 'forest' },
+                    npcs: ['chazz_home']
+                },
+                village: {
+                    name: 'The Village',
+                    desc: 'A small, peaceful village. Strange symbols are painted on some buildings - marks of the Sionist cult.\nVillagers whisper about the sorceress in the tower to the north.',
+                    exits: { south: 'cottage', north: 'cult_temple', east: 'market' },
+                    npcs: ['villager']
+                },
+                market: {
+                    name: 'Village Market',
+                    desc: 'A bustling market square. Merchants sell various goods. You notice some cult members browsing... they seem to be looking for you.',
+                    exits: { west: 'village', south: 'blacksmith' },
+                    npcs: ['merchant']
+                },
+                blacksmith: {
+                    name: 'Blacksmith\'s Shop',
+                    desc: 'Tools and weapons line the walls. A gruff blacksmith nods at you.\n"I hear the sorceress Tracey is causing trouble again. She\'s nearly blind, you know - can\'t see a thing without her magic sight."',
+                    exits: { north: 'market' },
+                    npcs: ['blacksmith']
+                },
+                forest: {
+                    name: 'Dark Forest',
+                    desc: 'Ancient trees loom overhead. The forest is home to creatures corrupted by the cult\'s dark magic.\nYou hear the sound of chanting in the distance.',
+                    exits: { west: 'cottage', north: 'cult_temple' },
+                    enemy: 'cult_minion'
+                },
+                cult_temple: {
+                    name: 'Temple of Sionism',
+                    desc: 'A massive stone temple carved with bizarre symbols. Cult members in tattered robes chant praises to their false god.\nThe air tingles with dark magic. A passage leads deeper into the temple.',
+                    exits: { south: 'village', west: 'forest', north: 'tower_base' },
+                    enemy: 'sionist_priest'
+                },
+                tower_base: {
+                    name: 'Base of the Dark Tower',
+                    desc: 'The tower looms before you, crackling with purple lightning. You can see shadows moving in the high windows.\nYou hear a voice from within: "Is someone there? I can\'t quite see you... STUPID EYES!"',
+                    exits: { south: 'cult_temple', north: 'tower_chamber' },
+                    enemy: 'tower_guardian'
+                },
+                tower_chamber: {
+                    name: 'The Tower - Tracey\'s Chamber',
+                    desc: 'You stand in a circular chamber at the top of the tower. Magical crystals provide eerie purple light.\nIn a cage, you see Ptouneigh! She meows desperately.\nTracey stands before the cage, squinting at you. "Who dares enter my domain?! Speak up, I can barely see you!"',
+                    exits: { south: 'tower_base' },
+                    enemy: 'tracey',
+                    boss: true
+                }
+            },
+
+            enemies: {
+                cult_minion: {
+                    name: 'Cultist Minion',
+                    hp: 25,
+                    attack: 5,
+                    xp: 20,
+                    gold: 10,
+                    dialogue: 'A brainwashed fanatic chanting incoherently.'
+                },
+                sionist_priest: {
+                    name: 'Sionist Priest',
+                    hp: 40,
+                    attack: 8,
+                    xp: 50,
+                    gold: 25,
+                    dialogue: 'A high priest of the Sionist faith, casting dark spells.'
+                },
+                tower_guardian: {
+                    name: 'Tower Guardian Golem',
+                    hp: 60,
+                    attack: 10,
+                    xp: 100,
+                    gold: 50,
+                    dialogue: 'A magical construct guarding Tracey\'s tower.'
+                },
+                tracey: {
+                    name: 'Tracey the Sorceress',
+                    hp: 80,
+                    attack: 12,
+                    xp: 300,
+                    gold: 200,
+                    dialogue: 'The evil sorceress squints at you.'
+                }
+            },
+
+            npcs: {
+                chazz_home: 'Chazz says: "Caleb! We must act quickly! That sorceress Tracey took Ptouneigh! I\'ve heard rumors she\'s in a tower somewhere north of here, guarded by her cult followers. Are you ready to save our little friend?"',
+                villager: 'A villager whispers: "The Sionists have been growing bolder... they say Tracey promised them power. But be careful - they\'re everywhere."',
+                merchant: 'A merchant warns: "The sorceress Tracey is terribly nearsighted. Blind as a bat without magic! Maybe you can use that to your advantage?"',
+                blacksmith: 'The blacksmith: "Take this dagger. You\'ll need all the help you can get against Tracey and her cult minions."'
+            }
+        };
+
+        const log = [];
+
+        function addLog(text, className = 'text-normal') {
+            log.push({ text, className });
+            updateOutput();
+        }
+
+        function updateOutput() {
+            const output = document.getElementById('output');
+            output.innerHTML = log.map(entry => 
+                `<span class="${entry.className}">${escapeHtml(entry.text)}</span>`
+            ).join('\n');
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function updateStats() {
+            const stats = document.getElementById('stats');
+            stats.innerHTML = `
+                <div class="stat">
+                    <div class="stat-label">❤️ HP</div>
+                    <div class="stat-value">${game.hp}/${game.maxHp}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">⚔️ ATK</div>
+                    <div class="stat-value">${game.attack}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">🛡️ DEF</div>
+                    <div class="stat-value">${game.defense}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">💰 GOLD</div>
+                    <div class="stat-value">${game.gold}</div>
+                </div>
+            `;
+        }
+
+        function updateButtons() {
+            const buttons = document.getElementById('buttons');
+            const suggestions = [];
+            const loc = game.locations[game.location];
+
+            if (game.inCombat) {
+                suggestions.push({ text: 'attack', cmd: 'attack' });
+                suggestions.push({ text: 'defend', cmd: 'defend' });
+                if (game.inventory.includes('health potion')) {
+                    suggestions.push({ text: 'use potion', cmd: 'use potion' });
+                }
+            } else {
+                suggestions.push({ text: 'look', cmd: 'look' });
+                if (loc.exits.north) suggestions.push({ text: '⬆️ north', cmd: 'north' });
+                if (loc.exits.south) suggestions.push({ text: '⬇️ south', cmd: 'south' });
+                if (loc.exits.east) suggestions.push({ text: '➡️ east', cmd: 'east' });
+                if (loc.exits.west) suggestions.push({ text: '⬅️ west', cmd: 'west' });
+                if (loc.npcs) suggestions.push({ text: 'talk', cmd: 'talk' });
+                if (game.location === 'market') suggestions.push({ text: 'shop', cmd: 'shop' });
+                if (game.location === 'blacksmith') suggestions.push({ text: 'talk', cmd: 'talk' });
+            }
+
+            buttons.innerHTML = suggestions.map(s => 
+                `<button onclick="processCommand('${s.cmd}')">${s.text}</button>`
+            ).join('');
+        }
+
+        function escapeHtml(text) {
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function handleInput() {
+            const cmd = document.getElementById('command').value.trim().toLowerCase();
+            document.getElementById('command').value = '';
+            if (cmd) processCommand(cmd);
+        }
+
+        function processCommand(cmd) {
+            addLog(`> ${cmd}`, 'text-normal');
+
+            if (game.gameOver || game.victory) {
+                if (cmd === 'restart') {
+                    location.reload();
+                } else {
+                    addLog('Type "restart" to start over.', 'text-error');
+                }
+                return;
+            }
+
+            if (game.inCombat) {
+                handleCombat(cmd);
+                updateStats();
+                updateButtons();
+                return;
+            }
+
+            switch(cmd) {
+                case 'look':
+                    describeLocation();
+                    break;
+                case 'north':
+                case 'south':
+                case 'east':
+                case 'west':
+                    move(cmd);
+                    break;
+                case 'talk':
+                    talk();
+                    break;
+                case 'shop':
+                    shop();
+                    break;
+                case 'inventory':
+                case 'i':
+                    showInventory();
+                    break;
+                case 'status':
+                    showStatus();
+                    break;
+                case 'help':
+                    showHelp();
+                    break;
+                case 'use potion':
+                    usePotion();
+                    break;
+                default:
+                    addLog('Unknown command. Type "help" for commands.', 'text-error');
+            }
+
+            updateStats();
+            updateButtons();
+        }
+
+        function describeLocation() {
+            const loc = game.locations[game.location];
+            addLog(`\n${loc.name}`, 'text-location');
+            addLog(loc.desc, 'text-normal');
+            const exits = Object.keys(loc.exits).join(', ');
+            addLog(`\nExits: ${exits}`, 'text-warning');
+
+            if (loc.enemy && !game.defeatedEnemies?.includes(game.location)) {
+                const enemy = game.enemies[loc.enemy];
+                addLog(`\n⚠️ ${enemy.dialogue}`, 'text-enemy');
+                game.inCombat = true;
+                game.currentEnemy = { ...enemy, currentHp: enemy.hp };
+            }
+        }
+
+        function move(direction) {
+            const loc = game.locations[game.location];
+            if (loc.exits[direction]) {
+                game.location = loc.exits[direction];
+                addLog('', 'text-normal');
+                describeLocation();
+            } else {
+                addLog('You cannot go that way.', 'text-error');
+            }
+        }
+
+        function talk() {
+            const loc = game.locations[game.location];
+            if (loc.npcs && loc.npcs.length > 0) {
+                addLog(`\n${game.npcs[loc.npcs[0]]}`, 'text-npc');
+            } else {
+                addLog('There is no one to talk to here.', 'text-error');
+            }
+        }
+
+        function shop() {
+            if (game.location !== 'market') {
+                addLog('There\'s no shop here.', 'text-error');
+                return;
+            }
+            addLog('\n--- SHOP ---', 'text-warning');
+            addLog('health potion (20g) - Restores 30 HP', 'text-normal');
+            addLog('Type "buy health potion" to purchase', 'text-normal');
+        }
+
+        function showInventory() {
+            if (game.inventory.length === 0) {
+                addLog('Your inventory is empty.', 'text-normal');
+            } else {
+                addLog(`Inventory: ${game.inventory.join(', ')}`, 'text-success');
+            }
+        }
+
+        function showStatus() {
+            addLog(`\n--- CHARACTER STATUS ---`, 'text-warning');
+            addLog(`${game.character} (Level ${game.level})`, 'text-normal');
+            addLog(`HP: ${game.hp}/${game.maxHp}`, 'text-normal');
+            addLog(`ATK: ${game.attack}, DEF: ${game.defense}`, 'text-normal');
+            addLog(`Gold: ${game.gold}`, 'text-normal');
+            addLog(`Party: ${game.party.join(', ')}`, 'text-success');
+        }
+
+        function showHelp() {
+            addLog(`\n--- COMMANDS ---`, 'text-warning');
+            addLog('look - Examine current location', 'text-normal');
+            addLog('north/south/east/west - Move', 'text-normal');
+            addLog('talk - Talk to NPCs', 'text-normal');
+            addLog('shop - Buy items (in market)', 'text-normal');
+            addLog('buy [item] - Purchase item', 'text-normal');
+            addLog('use potion - Use health potion', 'text-normal');
+            addLog('inventory - Check items', 'text-normal');
+            addLog('status - View character status', 'text-normal');
+            addLog('attack - Attack in combat', 'text-normal');
+            addLog('defend - Reduce incoming damage', 'text-normal');
+            addLog('help - Show this help', 'text-normal');
+        }
+
+        function usePotion() {
+            if (!game.inventory.includes('health potion')) {
+                addLog('You don\'t have a potion!', 'text-error');
+                return;
+            }
+            const heal = Math.min(30, game.maxHp - game.hp);
+            game.hp = Math.min(game.hp + 30, game.maxHp);
+            game.inventory = game.inventory.filter(i => i !== 'health potion');
+            addLog(`You use a health potion and restore ${heal} HP!`, 'text-success');
+        }
+
+        function handleCombat(cmd) {
+            const enemy = game.currentEnemy;
+            if (cmd === 'attack') {
+                const damage = game.attack + Math.floor(Math.random() * 4) - 1;
+                addLog(`Caleb attacks for ${damage} damage!`, 'text-success');
+                enemy.currentHp -= damage;
+
+                if (enemy.currentHp <= 0) {
+                    handleVictory();
+                } else {
+                    const enemyDamage = Math.max(1, enemy.attack - game.defense + Math.floor(Math.random() * 3) - 1);
+                    addLog(`${enemy.name} attacks for ${enemyDamage} damage!`, 'text-enemy');
+                    
+                    // Special dialogue for Tracey
+                    if (enemy.name === 'Tracey the Sorceress') {
+                        const traceyComments = [
+                            '"Where are you?! I can barely see a thing!"',
+                            '"Stupid eyes! Why can\'t I see you properly?!"',
+                            '"I\'m swinging at where I think you are!"',
+                            '"This blindness is infuriating!"'
+                        ];
+                        addLog(enemy.name + ' shouts: ' + traceyComments[Math.floor(Math.random() * traceyComments.length)], 'text-enemy');
+                    }
+                    
+                    game.hp -= enemyDamage;
+                    addLog(`Your HP: ${game.hp}/${game.maxHp} | Enemy HP: ${enemy.currentHp}/${enemy.hp}`, 'text-warning');
+
+                    if (game.hp <= 0) {
+                        game.gameOver = true;
+                        addLog(`\n💀 You have been defeated... Ptouneigh remains captured.`, 'text-error');
+                        addLog('Type "restart" to try again.', 'text-error');
+                    }
+                }
+            } else if (cmd === 'defend') {
+                addLog('Caleb takes a defensive stance!', 'text-success');
+                const enemyDamage = Math.max(1, Math.floor(enemy.attack / 2) + Math.floor(Math.random() * 2));
+                addLog(`${enemy.name} attacks for ${enemyDamage} damage (reduced by defense)!`, 'text-enemy');
+                game.hp -= enemyDamage;
+                addLog(`Your HP: ${game.hp}/${game.maxHp} | Enemy HP: ${enemy.currentHp}/${enemy.hp}`, 'text-warning');
+
+                if (game.hp <= 0) {
+                    game.gameOver = true;
+                    addLog(`\n💀 You have been defeated...`, 'text-error');
+                    addLog('Type "restart" to try again.', 'text-error');
+                }
+            } else {
+                addLog('In combat: attack / defend / use potion', 'text-warning');
+            }
+        }
+
+        function handleVictory() {
+            const enemy = game.currentEnemy;
+            addLog(`\n✨ You have defeated ${enemy.name}!`, 'text-success');
+            addLog(`+${enemy.xp} XP, +${enemy.gold} Gold!`, 'text-success');
+            game.xp += enemy.xp;
+            game.gold += enemy.gold;
+            game.inCombat = false;
+            game.currentEnemy = null;
+            game.defeatedEnemies = game.defeatedEnemies || [];
+            game.defeatedEnemies.push(game.location);
+
+            if (enemy.name === 'Tracey the Sorceress') {
+                game.traceyDefeated = true;
+                addLog(`\nTracey collapses, her spell breaking. The cage door swings open!`, 'text-story');
+                addLog(`Ptouneigh leaps out and rushes into your arms, purring loudly!`, 'text-story');
+                addLog(`\n🏆 VICTORY! You have rescued Ptouneigh!`, 'text-success');
+                addLog(`The Sionist cult, without their sorceress leader, crumbles. Peace returns to the land.`, 'text-story');
+                game.victory = true;
+                game.rescuedCat = true;
+                addLog('\nType "restart" to play again.', 'text-warning');
+            }
+        }
+
+        // Initialize game
+        window.addEventListener('load', () => {
+            addLog('⚔️ ASTHENIA - RESCUE THE CAT ⚔️\n', 'text-location');
+            addLog('Your beloved cat Ptouneigh has been captured by the evil sorceress Tracey!', 'text-story');
+            addLog('She leads a cult of religious fanatics known as the Sionists.', 'text-story');
+            addLog('With your trusty sidekick Chazz by your side, you must journey north,', 'text-story');
+            addLog('defeat the cultists, and rescue your furry friend!\n', 'text-story');
+            addLog('Type "help" for commands or "look" to begin.\n', 'text-warning');
+            describeLocation();
+            updateStats();
+            updateButtons();
+            document.getElementById('command').focus();
+        });
+
+        document.getElementById('command').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleInput();
+        });
+    </script>
+</body>
+</html>
