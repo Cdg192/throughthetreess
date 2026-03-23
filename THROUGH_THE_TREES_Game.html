@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚔ THROUGH THE TREES — Text Adventure RPG</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); min-height: 100vh; font-family: 'Courier New', monospace; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #1e1b4b; }
+  ::-webkit-scrollbar-thumb { background: #a78bfa; border-radius: 3px; }
+  input::placeholder { color: #4b5563; }
+  input:focus { border-color: rgba(167,139,250,0.7) !important; outline: none; }
+  button:hover { opacity: 0.85; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const GAME_DATA = {
+  locations: {
+    village: {
+      name: "Through the Trees Village",
+      description: "A quiet village at the edge of a dark forest. Smoke curls from chimneys and villagers whisper of monsters in the woods.",
+      exits: { north: "forest_entrance", east: "market", south: null, west: null },
+      npcs: ["elder"], items: ["old_map"],
+    },
+    market: {
+      name: "Village Market",
+      description: "Stalls line the cobblestone square. A merchant eyes you suspiciously. A rusty sword hangs on one of the stalls.",
+      exits: { north: null, east: null, south: null, west: "village" },
+      npcs: ["merchant"], items: ["rusty_sword", "health_potion"],
+    },
+    forest_entrance: {
+      name: "Forest Entrance",
+      description: "Twisted oaks loom overhead. The path ahead is dark and overgrown. You hear something moving in the shadows.",
+      exits: { north: "dark_grove", south: "village" },
+      npcs: [], items: ["strange_mushroom"], enemy: "wolf",
+    },
+    dark_grove: {
+      name: "Dark Grove",
+      description: "The trees press close. A ruined stone altar sits in a clearing, glowing faintly with ancient runes.",
+      exits: { south: "forest_entrance", north: "cave_entrance" },
+      npcs: [], items: ["ancient_amulet"], enemy: "shadow_beast",
+    },
+    cave_entrance: {
+      name: "Cave of Echoes",
+      description: "A yawning cave mouth exhales cold air. This is where the Elder said the Dragon Orb was taken.",
+      exits: { south: "dark_grove", north: "cave_depths" },
+      npcs: [], items: [], enemy: "cave_troll",
+    },
+    cave_depths: {
+      name: "The Dragon's Lair",
+      description: "Bones crunch underfoot. A massive dragon coils around a glowing orb — the Dragon Orb, stolen from your village!",
+      exits: { south: "cave_entrance" },
+      npcs: [], items: ["dragon_orb"], enemy: "dragon", isFinal: true,
+    },
+  },
+  items: {
+    old_map: { name: "Old Map", description: "A tattered map showing the forest paths.", usable: false },
+    rusty_sword: { name: "Rusty Sword", description: "An old sword. Not pretty, but it'll do.", attack: 8, usable: false, isWeapon: true, price: 10 },
+    health_potion: { name: "Health Potion", description: "Restores 30 HP when drunk.", heal: 30, usable: true, price: 8 },
+    strange_mushroom: { name: "Strange Mushroom", description: "Glows faintly. Probably edible. Probably.", heal: 10, usable: true },
+    ancient_amulet: { name: "Ancient Amulet", description: "Hums with protective magic.", defense: 3, usable: false, isArmor: true },
+    dragon_orb: { name: "Dragon Orb", description: "The stolen relic. It pulses with warm golden light.", usable: false, isQuest: true },
+  },
+  enemies: {
+    wolf: { name: "Forest Wolf", hp: 20, maxHp: 20, attack: 6, xp: 15, gold: 5, description: "A snarling wolf with glowing eyes." },
+    shadow_beast: { name: "Shadow Beast", hp: 35, maxHp: 35, attack: 10, xp: 30, gold: 12, description: "A writhing mass of darkness." },
+    cave_troll: { name: "Cave Troll", hp: 50, maxHp: 50, attack: 14, xp: 50, gold: 20, description: "A hulking troll that blocks the passage." },
+    dragon: { name: "Ancient Dragon", hp: 100, maxHp: 100, attack: 22, xp: 200, gold: 100, description: "A colossal dragon with scales like obsidian." },
+  },
+  npcs: {
+    elder: {
+      name: "Elder Maren",
+      dialogue: [
+        "Brave traveler! The Dragon Orb has been stolen. Without it, darkness will consume us all.",
+        "The thief fled north into the forest. You must recover the orb!",
+        "Be careful — the forest is full of dangers. Visit the market and arm yourself first.",
+      ],
+    },
+    merchant: {
+      name: "Merchant Torvas",
+      dialogue: ["Ah, a customer! I have fine wares for sale.", "The rusty sword is 10 gold. Health potions are 8 gold each."],
+      sells: ["rusty_sword", "health_potion"],
+    },
+  },
+};
+
+const initialState = () => ({
+  location: "village", hp: 100, maxHp: 100, attack: 5, defense: 0,
+  gold: 20, xp: 0, level: 1, inventory: [], defeatedEnemies: [],
+  pickedUpItems: [], currentEnemy: null, inCombat: false, gameOver: false, victory: false,
+});
+
+const xpForLevel = (lvl) => lvl * 50;
+
+function Game() {
+  const [state, setState] = useState(initialState());
+  const [log, setLog] = useState([
+    { type: "system", text: "⚔️  Welcome to THROUGH THE TREES — a text adventure RPG." },
+    { type: "system", text: 'Type commands or use the buttons below. Try "look", "go north", "talk elder", or "help".' },
+    { type: "location", text: "📍 Through the Trees Village" },
+    { type: "desc", text: GAME_DATA.locations["village"].description },
+  ]);
+  const [input, setInput] = useState("");
+  const logRef = useRef(null);
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [log]);
+
+  const addLog = (entries) => setLog((prev) => [...prev, ...entries]);
+
+  const processCommand = (cmd) => {
+    const raw = cmd.trim().toLowerCase();
+    if (!raw) return;
+    addLog([{ type: "input", text: `> ${cmd}` }]);
+
+    if (state.gameOver || state.victory) {
+      if (raw === "restart") {
+        setState(initialState());
+        setLog([
+          { type: "system", text: "⚔️  A new adventure begins in Through the Trees..." },
+          { type: "location", text: "📍 Through the Trees Village" },
+          { type: "desc", text: GAME_DATA.locations["village"].description },
+        ]);
+      } else addLog([{ type: "system", text: 'Type "restart" to play again.' }]);
+      return;
+    }
+
+    if (state.inCombat) { handleCombatCommand(raw); return; }
+
+    if (raw === "help") {
+      addLog([{ type: "system", text: "Commands: look · go [direction] · talk [npc] · take [item] · use [item] · inventory · stats · buy [item] · help" }]);
+    } else if (raw === "look") {
+      describeLocation(state.location);
+    } else if (raw.startsWith("go ") || ["north","south","east","west"].includes(raw)) {
+      handleMove(raw.replace("go ", ""));
+    } else if (raw.startsWith("talk ")) {
+      handleTalk(raw.replace("talk ", ""));
+    } else if (raw.startsWith("take ") || raw.startsWith("pick up ")) {
+      handleTake(raw.replace("pick up ", "").replace("take ", ""));
+    } else if (raw.startsWith("use ")) {
+      handleUse(raw.replace("use ", ""));
+    } else if (raw === "inventory" || raw === "i") {
+      handleInventory();
+    } else if (raw === "stats" || raw === "status") {
+      handleStats();
+    } else if (raw.startsWith("buy ")) {
+      handleBuy(raw.replace("buy ", ""));
+    } else {
+      addLog([{ type: "error", text: "I don't understand that. Type 'help' for commands." }]);
+    }
+  };
+
+  const describeLocation = (locId) => {
+    const loc = GAME_DATA.locations[locId];
+    const entries = [
+      { type: "location", text: `📍 ${loc.name}` },
+      { type: "desc", text: loc.description },
+    ];
+    const exits = Object.entries(loc.exits).filter(([,v]) => v).map(([k]) => k).join(", ");
+    entries.push({ type: "info", text: `Exits: ${exits || "none"}` });
+    const availItems = (loc.items || []).filter(i => !state.pickedUpItems.includes(`${locId}_${i}`));
+    if (availItems.length) entries.push({ type: "info", text: `You see: ${availItems.map(i => GAME_DATA.items[i]?.name).join(", ")}` });
+    if (loc.npcs?.length) entries.push({ type: "info", text: `People here: ${loc.npcs.map(n => GAME_DATA.npcs[n]?.name).join(", ")}` });
+    if (loc.enemy && !state.defeatedEnemies.includes(locId)) entries.push({ type: "danger", text: `⚠️  A ${GAME_DATA.enemies[loc.enemy].name} lurks here!` });
+    addLog(entries);
+  };
+
+  const handleMove = (dir) => {
+    const loc = GAME_DATA.locations[state.location];
+    const dest = loc.exits[dir];
+    if (!dest) { addLog([{ type: "error", text: "You can't go that way." }]); return; }
+    const newState = { ...state, location: dest };
+    setState(newState);
+    const destLoc = GAME_DATA.locations[dest];
+    const entries = [
+      { type: "location", text: `📍 ${destLoc.name}` },
+      { type: "desc", text: destLoc.description },
+    ];
+    const exits = Object.entries(destLoc.exits).filter(([,v]) => v).map(([k]) => k).join(", ");
+    entries.push({ type: "info", text: `Exits: ${exits || "none"}` });
+    const availItems = (destLoc.items || []).filter(i => !state.pickedUpItems.includes(`${dest}_${i}`));
+    if (availItems.length) entries.push({ type: "info", text: `You see: ${availItems.map(i => GAME_DATA.items[i]?.name).join(", ")}` });
+    if (destLoc.npcs?.length) entries.push({ type: "info", text: `People here: ${destLoc.npcs.map(n => GAME_DATA.npcs[n]?.name).join(", ")}` });
+    if (destLoc.enemy && !state.defeatedEnemies.includes(dest)) {
+      const enemy = { ...GAME_DATA.enemies[destLoc.enemy] };
+      entries.push({ type: "danger", text: `⚔️  A ${enemy.name} attacks you!` });
+      entries.push({ type: "desc", text: enemy.description });
+      entries.push({ type: "combat", text: `HP: ${enemy.hp}/${enemy.maxHp} | Your HP: ${newState.hp}/${newState.maxHp}` });
+      entries.push({ type: "system", text: 'Combat! Type "attack", "use [item]", or "flee".' });
+      setState({ ...newState, inCombat: true, currentEnemy: enemy });
+    }
+    addLog(entries);
+  };
+
+  const handleTalk = (npcKey) => {
+    const loc = GAME_DATA.locations[state.location];
+    const match = loc.npcs?.find(n => n.includes(npcKey) || GAME_DATA.npcs[n]?.name.toLowerCase().includes(npcKey));
+    if (!match) { addLog([{ type: "error", text: "There's no one by that name here." }]); return; }
+    const npc = GAME_DATA.npcs[match];
+    const line = npc.dialogue[Math.floor(Math.random() * npc.dialogue.length)];
+    addLog([{ type: "npc", text: `${npc.name}: "${line}"` }]);
+    if (npc.sells) addLog([{ type: "info", text: `You can buy: ${npc.sells.map(i => `${GAME_DATA.items[i].name} (${GAME_DATA.items[i].price}g)`).join(", ")}` }]);
+  };
+
+  const handleTake = (itemKey) => {
+    const loc = GAME_DATA.locations[state.location];
+    const match = loc.items?.find(i => {
+      const key = `${state.location}_${i}`;
+      return !state.pickedUpItems.includes(key) && (i.includes(itemKey) || GAME_DATA.items[i]?.name.toLowerCase().includes(itemKey));
+    });
+    if (!match) { addLog([{ type: "error", text: "That item isn't here." }]); return; }
+    const item = GAME_DATA.items[match];
+    const key = `${state.location}_${match}`;
+    let newState = { ...state, inventory: [...state.inventory, match], pickedUpItems: [...state.pickedUpItems, key] };
+    if (item.isWeapon) newState.attack = Math.max(newState.attack, item.attack);
+    if (item.isArmor) newState.defense = Math.max(newState.defense, item.defense);
+    setState(newState);
+    addLog([{ type: "success", text: `You picked up: ${item.name}.${item.isWeapon ? ` Attack +${item.attack}!` : item.isArmor ? ` Defense +${item.defense}!` : ""}` }]);
+  };
+
+  const handleUse = (itemKey) => {
+    const match = state.inventory.find(i => i.includes(itemKey) || GAME_DATA.items[i]?.name.toLowerCase().includes(itemKey));
+    if (!match) { addLog([{ type: "error", text: "You don't have that." }]); return; }
+    const item = GAME_DATA.items[match];
+    if (!item.usable) { addLog([{ type: "error", text: `You can't use ${item.name} like that.` }]); return; }
+    const healed = Math.min(item.heal, state.maxHp - state.hp);
+    setState({ ...state, hp: state.hp + healed, inventory: state.inventory.filter(i => i !== match) });
+    addLog([{ type: "success", text: `You used ${item.name} and restored ${healed} HP. (HP: ${state.hp + healed}/${state.maxHp})` }]);
+  };
+
+  const handleInventory = () => {
+    if (!state.inventory.length) { addLog([{ type: "info", text: "Your inventory is empty." }]); return; }
+    addLog([{ type: "info", text: `Inventory: ${state.inventory.map(i => GAME_DATA.items[i]?.name).join(", ")}` }]);
+  };
+
+  const handleStats = () => {
+    addLog([{ type: "info", text: `⚔️  Level ${state.level} Hero | HP: ${state.hp}/${state.maxHp} | ATK: ${state.attack} | DEF: ${state.defense} | Gold: ${state.gold}g | XP: ${state.xp}/${xpForLevel(state.level)}` }]);
+  };
+
+  const handleBuy = (itemKey) => {
+    const loc = GAME_DATA.locations[state.location];
+    const npcId = loc.npcs?.find(n => GAME_DATA.npcs[n]?.sells);
+    if (!npcId) { addLog([{ type: "error", text: "There's no shop here." }]); return; }
+    const npc = GAME_DATA.npcs[npcId];
+    const match = npc.sells.find(i => i.includes(itemKey) || GAME_DATA.items[i]?.name.toLowerCase().includes(itemKey));
+    if (!match) { addLog([{ type: "error", text: "They don't sell that." }]); return; }
+    const item = GAME_DATA.items[match];
+    if (state.gold < item.price) { addLog([{ type: "error", text: `Not enough gold. You need ${item.price}g.` }]); return; }
+    let newState = { ...state, gold: state.gold - item.price, inventory: [...state.inventory, match] };
+    if (item.isWeapon) newState.attack = Math.max(newState.attack, item.attack);
+    if (item.isArmor) newState.defense = Math.max(newState.defense, item.defense);
+    setState(newState);
+    addLog([{ type: "success", text: `You bought ${item.name} for ${item.price}g.` }]);
+  };
+
+  const handleCombatCommand = (cmd) => {
+    const enemy = state.currentEnemy;
+    if (cmd === "attack" || cmd === "a") {
+      const playerDmg = Math.max(1, state.attack + Math.floor(Math.random() * 5) - 2);
+      const enemyDmg = Math.max(1, enemy.attack - state.defense + Math.floor(Math.random() * 4) - 2);
+      const newEnemyHp = enemy.hp - playerDmg;
+      const newPlayerHp = state.hp - enemyDmg;
+      const entries = [{ type: "combat", text: `You strike ${enemy.name} for ${playerDmg} damage!` }];
+      if (newEnemyHp <= 0) {
+        let newState = { ...state, inCombat: false, currentEnemy: null, defeatedEnemies: [...state.defeatedEnemies, state.location], gold: state.gold + enemy.gold, xp: state.xp + enemy.xp, hp: newPlayerHp > 0 ? newPlayerHp : state.hp };
+        entries.push({ type: "success", text: `💀 You defeated ${enemy.name}! +${enemy.xp} XP, +${enemy.gold} gold.` });
+        let lvl = newState.level;
+        while (newState.xp >= xpForLevel(lvl)) { lvl++; newState.maxHp += 15; newState.hp = newState.maxHp; newState.attack += 3; entries.push({ type: "system", text: `🌟 Level Up! You are now level ${lvl}!` }); }
+        newState.level = lvl;
+        const loc = GAME_DATA.locations[state.location];
+        if (loc.isFinal && !state.pickedUpItems.includes(`${state.location}_dragon_orb`)) entries.push({ type: "system", text: `✨ The Dragon Orb rolls free! Type "take dragon orb" to claim it!` });
+        setState(newState);
+      } else {
+        entries.push({ type: "danger", text: `${enemy.name} strikes back for ${enemyDmg} damage!` });
+        if (newPlayerHp <= 0) {
+          entries.push({ type: "danger", text: `💀 You have been slain... The village falls to darkness.` });
+          entries.push({ type: "system", text: 'Type "restart" to play again.' });
+          setState({ ...state, hp: 0, inCombat: false, gameOver: true });
+        } else {
+          entries.push({ type: "combat", text: `HP: ${newEnemyHp}/${enemy.maxHp} | Your HP: ${newPlayerHp}/${state.maxHp}` });
+          setState({ ...state, hp: newPlayerHp, currentEnemy: { ...enemy, hp: newEnemyHp } });
+        }
+      }
+      addLog(entries);
+    } else if (cmd.startsWith("use ")) {
+      handleUse(cmd.replace("use ", ""));
+    } else if (cmd === "flee" || cmd === "f") {
+      const fleeDmg = Math.max(1, enemy.attack - state.defense);
+      const newHp = state.hp - fleeDmg;
+      if (newHp <= 0) {
+        addLog([{ type: "danger", text: `You tried to flee but were cut down! Game over.` }, { type: "system", text: 'Type "restart" to play again.' }]);
+        setState({ ...state, hp: 0, inCombat: false, gameOver: true });
+      } else {
+        const loc = GAME_DATA.locations[state.location];
+        const safeExit = Object.entries(loc.exits).find(([,v]) => v && v !== "cave_depths")?.[1] || "village";
+        setState({ ...state, hp: newHp, inCombat: false, currentEnemy: null, location: safeExit });
+        const dest = GAME_DATA.locations[safeExit];
+        addLog([{ type: "info", text: `You flee, taking ${fleeDmg} damage! (HP: ${newHp}/${state.maxHp})` }, { type: "location", text: `📍 ${dest.name}` }, { type: "desc", text: dest.description }]);
+      }
+    } else {
+      addLog([{ type: "system", text: 'Combat! Type "attack", "use [item]", or "flee".' }]);
+    }
+  };
+
+  useEffect(() => {
+    if (state.inventory.includes("dragon_orb") && !state.victory) {
+      setState(s => ({ ...s, victory: true }));
+      addLog([
+        { type: "success", text: "✨ You grasp the Dragon Orb! Warm golden light floods the cave." },
+        { type: "success", text: "🏆 VICTORY! You return to Through the Trees as a hero. The village is saved!" },
+        { type: "system", text: 'Type "restart" to play again.' },
+      ]);
+    }
+  }, [state.inventory]);
+
+  const typeColors = {
+    system: "#a78bfa", input: "#60a5fa", location: "#fbbf24", desc: "#e2e8f0",
+    info: "#94a3b8", npc: "#34d399", success: "#4ade80", danger: "#f87171",
+    error: "#fb923c", combat: "#f472b6",
+  };
+
+  const loc = GAME_DATA.locations[state.location];
+  const exits = Object.entries(loc.exits).filter(([,v]) => v);
+  const quickActions = state.inCombat
+    ? [["⚔️ Attack", "attack"], ["🏃 Flee", "flee"]]
+    : [["👁 Look", "look"], ["📊 Stats", "stats"], ["🎒 Inventory", "inventory"]];
+
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Courier New', monospace", padding:"16px" }}>
+      <div style={{ width:"100%", maxWidth:"720px" }}>
+        <div style={{ textAlign:"center", marginBottom:"16px" }}>
+          <h1 style={{ color:"#fbbf24", fontSize:"28px", letterSpacing:"6px", margin:0, textShadow:"0 0 20px #fbbf2488" }}>⚔ THROUGH THE TREES ⚔</h1>
+          <p style={{ color:"#94a3b8", fontSize:"12px", marginTop:"4px" }}>A TEXT ADVENTURE RPG</p>
+        </div>
+        <div style={{ display:"flex", gap:"12px", marginBottom:"10px", background:"rgba(255,255,255,0.05)", borderRadius:"8px", padding:"8px 14px", flexWrap:"wrap", fontSize:"12px" }}>
+          {[
+            [`❤️ HP ${state.hp}/${state.maxHp}`, "#ef4444"],
+            [`⚔️ ATK ${state.attack}`, "#f97316"],
+            [`🛡️ DEF ${state.defense}`, "#06b6d4"],
+            [`💰 Gold ${state.gold}`, "#eab308"],
+            [`⭐ Level ${state.level}`, "#ec4899"],
+            [`📈 XP ${state.xp}`, "#94a3b8"],
+          ].map(([label, color]) => <span key={label} style={{ color }}>{label}</span>)}
+        </div>
+        <div ref={logRef} style={{ height:"360px", overflowY:"auto", background:"rgba(0,0,0,0.5)", border:"1px solid rgba(167,139,250,0.3)", borderRadius:"10px", padding:"14px", marginBottom:"10px" }}>
+          {log.map((entry, i) => (
+            <div key={i} style={{ color: typeColors[entry.type] || "#e2e8f0", marginBottom:"6px", fontSize:"13px", lineHeight:"1.4" }}>
+              {entry.text}
+            </div>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:"6px", marginBottom:"8px", flexWrap:"wrap" }}>
+          {quickActions.map(([label, cmd]) => (
+            <button key={cmd} onClick={() => processCommand(cmd)} style={{ background:"rgba(167,139,250,0.15)", border:"1px solid rgba(167,139,250,0.4)", color:"#a78bfa", padding:"5px 12px", borderRadius:"6px", cursor:"pointer", fontSize:"12px", fontFamily:"inherit" }}>{label}</button>
+          ))}
+          {!state.inCombat && exits.map(([dir]) => (
+            <button key={dir} onClick={() => processCommand(`go ${dir}`)} style={{ background:"rgba(96,165,250,0.1)", border:"1px solid rgba(96,165,250,0.3)", color:"#60a5fa", padding:"5px 12px", borderRadius:"6px", cursor:"pointer", fontSize:"12px", fontFamily:"inherit" }}>→ {dir}</button>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:"8px" }}>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => { if (e.key === "Enter") { processCommand(input); setInput(""); } }}
+            placeholder="Enter command..."
+            style={{ flex:1, background:"rgba(0,0,0,0.4)", border:"1px solid rgba(167,139,250,0.4)", color:"#e2e8f0", padding:"10px 14px", borderRadius:"8px", fontFamily:"inherit", fontSize:"13px", outline:"none" }}
+          />
+          <button onClick={() => { processCommand(input); setInput(""); }} style={{ background:"linear-gradient(135deg, #7c3aed, #4f46e5)", border:"none", color:"white", padding:"10px 18px", borderRadius:"8px", cursor:"pointer", fontFamily:"inherit", fontSize:"13px" }}>GO</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Game />);
+</script>
+</body>
+</html>
